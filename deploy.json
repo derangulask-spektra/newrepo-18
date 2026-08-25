@@ -26,20 +26,6 @@
     "trainerUserPassword": {
       "type": "string"
     },
-    "aiLocation": {
-      "type": "string",
-      "defaultValue": "[resourceGroup().location]",
-      "metadata": {
-        "description": "Region for the Microsoft Foundry (Cognitive Services) account and model deployments. Pin this to a region with gpt-5 + text-embedding-3-small GlobalStandard quota."
-      }
-    },
-    "horizonDbLocation": {
-      "type": "string",
-      "defaultValue": "[resourceGroup().location]",
-      "metadata": {
-        "description": "Region for the Azure HorizonDB cluster. MUST be a region where the pg_textsearch preview extension is available (e.g. westus2, australiaeast). Do NOT use eastus."
-      }
-    },
     "gptCapacity": {
       "type": "int",
       "defaultValue": 30,
@@ -85,6 +71,10 @@
     "location": "[resourceGroup().location]",
     "virtualMachineSize": "Standard_D2s_v3",
 
+    "_regionNote": "aiLocation/horizonDbLocation are fixed VARIABLES, not parameters. CloudLabs' Test harness only recognizes its own token set (adminUsername, AzureUserName, DeploymentID, etc.) for externally-supplied parameter values; a custom parameter like a region string has no field in the platform's authoring UI, so the harness silently falls back to a parameter's defaultValue instead of any value we supply in a hand-written parameters.json. Baking the region in as a variable removes that failure mode entirely: variables are computed purely from the template's own logic and cannot be overridden by an external parameters file, so there is nothing for the platform to drop.",
+    "aiLocation": "westus3",
+    "horizonDbLocation": "westus2",
+
     "openAiAccountName": "[concat('openai-lab-', parameters('DeploymentID'))]",
     "foundryProjectName": "[concat('project-', parameters('DeploymentID'))]",
     "chatDeploymentName": "gpt-5",
@@ -99,7 +89,7 @@
     "parameterGroupName": "lab",
     "pgAdminUsername": "AzureUser",
     "pgAdminPassword": "[concat('Pg', uniqueString(resourceGroup().id, parameters('DeploymentID')), 'Lab26')]",
-    "pgHostFallback": "[concat(variables('horizonClusterName'), '.', parameters('horizonDbLocation'), '.horizondb.azure.com')]",
+    "pgHostFallback": "[concat(variables('horizonClusterName'), '.', variables('horizonDbLocation'), '.horizondb.azure.com')]",
     "pgAllowedExtensions": "age,azure_ai,pg_diskann,pg_textsearch,vector",
     "pgPreloadLibraries": "age,pg_textsearch",
 
@@ -110,7 +100,7 @@
       "type": "Microsoft.CognitiveServices/accounts",
       "apiVersion": "2025-04-01-preview",
       "name": "[variables('openAiAccountName')]",
-      "location": "[parameters('aiLocation')]",
+      "location": "[variables('aiLocation')]",
       "kind": "AIServices",
       "identity": {
         "type": "SystemAssigned"
@@ -129,7 +119,7 @@
       "type": "Microsoft.CognitiveServices/accounts/projects",
       "apiVersion": "2025-04-01-preview",
       "name": "[concat(variables('openAiAccountName'), '/', variables('foundryProjectName'))]",
-      "location": "[parameters('aiLocation')]",
+      "location": "[variables('aiLocation')]",
       "identity": {
         "type": "SystemAssigned"
       },
@@ -188,7 +178,7 @@
       "type": "Microsoft.HorizonDb/clusters",
       "apiVersion": "2026-01-20-preview",
       "name": "[variables('horizonClusterName')]",
-      "location": "[parameters('horizonDbLocation')]",
+      "location": "[variables('horizonDbLocation')]",
       "properties": {
         "administratorLogin": "[variables('pgAdminUsername')]",
         "administratorLoginPassword": "[variables('pgAdminPassword')]",
@@ -202,7 +192,7 @@
       "type": "Microsoft.HorizonDb/parameterGroups",
       "apiVersion": "2026-01-20-preview",
       "name": "[variables('parameterGroupName')]",
-      "location": "[parameters('horizonDbLocation')]",
+      "location": "[variables('horizonDbLocation')]",
       "comments": "Allow-lists the five extensions the workshop depends on. Attachment to the cluster is performed by configure-horizondb.ps1 on the lab VM.",
       "properties": {
         "description": "Lab parameter group: allow-listed AI extensions and shared_preload_libraries.",
@@ -265,8 +255,8 @@
         "settings": {
           "fileUris": [
             "https://experienceazure.blob.core.windows.net/templates/cloudlabs-common/cloudlabs-windows-functions.ps1",
-            "https://raw.githubusercontent.com/derangulask-spektra/newrepo-18/refs/heads/main/psscript.ps1",
-            "https://raw.githubusercontent.com/derangulask-spektra/newrepo-18/refs/heads/main/configure-horizondb.ps1"
+            "https://experienceazure.blob.core.windows.net/templates/Building-an-Agentic-Legal-Research-Application/scripts/psscript.ps1",
+            "https://experienceazure.blob.core.windows.net/templates/Building-an-Agentic-Legal-Research-Application/scripts/configure-horizondb.ps1"
           ]
         },
         "protectedSettings": {
