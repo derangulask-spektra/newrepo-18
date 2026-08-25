@@ -1,0 +1,454 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "adminUsername": {
+      "type": "string"
+    },
+    "adminPassword": {
+      "type": "securestring"
+    },
+    "AzureUserName": {
+      "type": "string"
+    },
+    "AzurePassword": {
+      "type": "securestring"
+    },
+    "ODLID": {
+      "type": "String"
+    },
+    "DeploymentID": {
+      "type": "string"
+    },
+    "trainerUserName": {
+      "type": "string"
+    },
+    "trainerUserPassword": {
+      "type": "string"
+    },
+    "aiLocation": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Region for the Microsoft Foundry (Cognitive Services) account and model deployments. Pin this to a region with gpt-5 + text-embedding-3-small GlobalStandard quota."
+      }
+    },
+    "horizonDbLocation": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Region for the Azure HorizonDB cluster. MUST be a region where the pg_textsearch preview extension is available (e.g. westus2, australiaeast). Do NOT use eastus."
+      }
+    },
+    "gptCapacity": {
+      "type": "int",
+      "defaultValue": 30,
+      "metadata": {
+        "description": "gpt-5 GlobalStandard capacity, in units of 1,000 TPM. 30 = 30,000 TPM per attendee, matching the lab guide."
+      }
+    },
+    "embeddingCapacity": {
+      "type": "int",
+      "defaultValue": 120,
+      "metadata": {
+        "description": "text-embedding-3-small GlobalStandard capacity, in units of 1,000 TPM. 120 = 120,000 TPM per attendee, matching the lab guide."
+      }
+    },
+    "postgresVersion": {
+      "type": "string",
+      "defaultValue": "17"
+    },
+    "vCores": {
+      "type": "int",
+      "defaultValue": 2
+    },
+    "replicaCount": {
+      "type": "int",
+      "defaultValue": 2
+    }
+  },
+  "variables": {
+    "cloudlabsCommon": "[concat(' -AzureUserName ', parameters('AzureUserName'), ' -AzurePassword ', parameters('AzurePassword'), ' -AzureTenantID ', variables('AzureTenantID'), ' -AzureSubscriptionID ', variables('AzureSubscriptionID'),' -odlId ', parameters('ODLID'), ' -DeploymentID ', parameters('DeploymentID'), ' -adminPassword ', parameters('adminPassword'))]",
+    "Enable-CloudLabsEmbeddedShadow": "[concat(' -vmAdminUsername ', parameters('adminUsername'), ' -trainerUserName ', parameters('trainerUserName'), ' -trainerUserPassword ', parameters('trainerUserPassword'))]",
+    "AzureSubscriptionID": "[subscription().subscriptionId]",
+    "AzureTenantID": "[subscription().tenantId]",
+    "addressPrefix": "10.0.0.0/16",
+    "networkInterfaceName": "[concat(variables('vmName'), '-nic')]",
+    "networkSecurityGroupName": "[concat(variables('vmName'), '-nsg')]",
+    "publicIpAddressDNSName": "[concat('labvm', uniqueString(resourceGroup().id))]",
+    "publicIpAddressName": "[concat(variables('vmName'), '-pip')]",
+    "subnetName": "Subnet",
+    "subnetPrefix": "10.0.0.0/24",
+    "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets/',variables('virtualNetworkName'), variables('subnetName'))]",
+    "virtualNetworkName": "labvNet",
+    "vmName": "[concat('labvm-',parameters('DeploymentID'))]",
+    "location": "[resourceGroup().location]",
+    "virtualMachineSize": "Standard_D2s_v3",
+
+    "openAiAccountName": "[concat('openai-lab-', parameters('DeploymentID'))]",
+    "foundryProjectName": "[concat('project-', parameters('DeploymentID'))]",
+    "chatDeploymentName": "gpt-5",
+    "chatModelVersion": "2025-08-07",
+    "embedDeploymentName": "text-embedding-3-small",
+    "embedModelVersion": "1",
+    "openAiApiVersion": "2025-03-01-preview",
+    "openAiEndpoint": "[concat('https://', variables('openAiAccountName'), '.openai.azure.com')]",
+
+    "horizonClusterName": "[concat('horizondb-lab-', parameters('DeploymentID'))]",
+    "horizonApiVersion": "2026-01-20-preview",
+    "parameterGroupName": "lab",
+    "pgAdminUsername": "AzureUser",
+    "pgAdminPassword": "[concat('Pg', uniqueString(resourceGroup().id, parameters('DeploymentID')), 'Lab26')]",
+    "pgHostFallback": "[concat(variables('horizonClusterName'), '.', parameters('horizonDbLocation'), '.horizondb.azure.com')]",
+    "pgAllowedExtensions": "age,azure_ai,pg_diskann,pg_textsearch,vector",
+    "pgPreloadLibraries": "age,pg_textsearch",
+
+    "labSettings": "[concat(' -resourceGroupName ', resourceGroup().name, ' -openAiAccountName ', variables('openAiAccountName'), ' -openAiEndpoint ', variables('openAiEndpoint'), ' -openAiDeployment ', variables('chatDeploymentName'), ' -embedDeployment ', variables('embedDeploymentName'), ' -openAiApiVersion ', variables('openAiApiVersion'), ' -clusterName ', variables('horizonClusterName'), ' -pgHostFallback ', variables('pgHostFallback'), ' -pgUser ', variables('pgAdminUsername'), ' -pgPassword ', variables('pgAdminPassword'), ' -parameterGroupName ', variables('parameterGroupName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[variables('openAiAccountName')]",
+      "location": "[parameters('aiLocation')]",
+      "kind": "AIServices",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "sku": {
+        "name": "S0"
+      },
+      "properties": {
+        "allowProjectManagement": true,
+        "customSubDomainName": "[variables('openAiAccountName')]",
+        "publicNetworkAccess": "Enabled",
+        "disableLocalAuth": false
+      }
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/projects",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[concat(variables('openAiAccountName'), '/', variables('foundryProjectName'))]",
+      "location": "[parameters('aiLocation')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('openAiAccountName'))]"
+      ],
+      "properties": {
+        "displayName": "[variables('foundryProjectName')]",
+        "description": "Default project for the agentic legal research lab."
+      }
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/deployments",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[concat(variables('openAiAccountName'), '/', variables('embedDeploymentName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('openAiAccountName'), variables('foundryProjectName'))]"
+      ],
+      "sku": {
+        "name": "GlobalStandard",
+        "capacity": "[parameters('embeddingCapacity')]"
+      },
+      "properties": {
+        "model": {
+          "format": "OpenAI",
+          "name": "[variables('embedDeploymentName')]",
+          "version": "[variables('embedModelVersion')]"
+        },
+        "versionUpgradeOption": "OnceNewDefaultVersionAvailable",
+        "raiPolicyName": "Microsoft.DefaultV2"
+      }
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/deployments",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[concat(variables('openAiAccountName'), '/', variables('chatDeploymentName'))]",
+      "comments": "Model deployments on the same account must be created serially, hence the dependsOn.",
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts/deployments', variables('openAiAccountName'), variables('embedDeploymentName'))]"
+      ],
+      "sku": {
+        "name": "GlobalStandard",
+        "capacity": "[parameters('gptCapacity')]"
+      },
+      "properties": {
+        "model": {
+          "format": "OpenAI",
+          "name": "[variables('chatDeploymentName')]",
+          "version": "[variables('chatModelVersion')]"
+        },
+        "versionUpgradeOption": "OnceNewDefaultVersionAvailable",
+        "raiPolicyName": "Microsoft.DefaultV2"
+      }
+    },
+    {
+      "type": "Microsoft.HorizonDb/clusters",
+      "apiVersion": "2026-01-20-preview",
+      "name": "[variables('horizonClusterName')]",
+      "location": "[parameters('horizonDbLocation')]",
+      "properties": {
+        "administratorLogin": "[variables('pgAdminUsername')]",
+        "administratorLoginPassword": "[variables('pgAdminPassword')]",
+        "createMode": "Create",
+        "vCores": "[parameters('vCores')]",
+        "replicaCount": "[parameters('replicaCount')]",
+        "version": "[parameters('postgresVersion')]"
+      }
+    },
+    {
+      "type": "Microsoft.HorizonDb/parameterGroups",
+      "apiVersion": "2026-01-20-preview",
+      "name": "[variables('parameterGroupName')]",
+      "location": "[parameters('horizonDbLocation')]",
+      "comments": "Allow-lists the five extensions the workshop depends on. Attachment to the cluster is performed by configure-horizondb.ps1 on the lab VM.",
+      "properties": {
+        "description": "Lab parameter group: allow-listed AI extensions and shared_preload_libraries.",
+        "pgVersion": "[int(parameters('postgresVersion'))]",
+        "applyImmediately": true,
+        "parameters": [
+          {
+            "name": "azure.extensions",
+            "value": "[variables('pgAllowedExtensions')]"
+          },
+          {
+            "name": "shared_preload_libraries",
+            "value": "[variables('pgPreloadLibraries')]"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('virtualNetworkName')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('addressPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('subnetName')]",
+            "properties": {
+              "addressPrefix": "[variables('subnetPrefix')]"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "name": "[concat(variables('vmName'),'/', 'winExtension')]",
+      "apiVersion": "2023-09-01",
+      "location": "[resourceGroup().location]",
+      "comments": "Post-deployment configuration: tooling, lab package, pip install, HorizonDB parameter group + firewall, .env build",
+      "tags": {
+        "displayName": "VM Extension"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Compute/virtualMachines/', variables('vmName'))]",
+        "[resourceId('Microsoft.Network/publicIpAddresses', variables('publicIpAddressName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts/deployments', variables('openAiAccountName'), variables('chatDeploymentName'))]",
+        "[resourceId('Microsoft.HorizonDb/clusters', variables('horizonClusterName'))]",
+        "[resourceId('Microsoft.HorizonDb/parameterGroups', variables('parameterGroupName'))]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Compute",
+        "type": "CustomScriptExtension",
+        "typeHandlerVersion": "1.8",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "fileUris": [
+            "https://experienceazure.blob.core.windows.net/templates/cloudlabs-common/cloudlabs-windows-functions.ps1",
+            "https://experienceazure.blob.core.windows.net/templates/Building-an-Agentic-Legal-Research-Application/scripts/psscript.ps1",
+            "https://experienceazure.blob.core.windows.net/templates/Building-an-Agentic-Legal-Research-Application/scripts/configure-horizondb.ps1"
+          ]
+        },
+        "protectedSettings": {
+          "commandToExecute": "[concat('powershell.exe -ExecutionPolicy Unrestricted -File Building-an-Agentic-Legal-Research-Application/scripts/psscript.ps1', variables('cloudlabsCommon'), variables('Enable-CloudLabsEmbeddedShadow'), variables('labSettings'), ' -openAiKey ', listKeys(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiAccountName')), '2025-04-01-preview').key1, ' -labVmPublicIp ', reference(resourceId('Microsoft.Network/publicIpAddresses', variables('publicIpAddressName')), '2023-09-01').ipAddress)]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIpAddresses",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('publicIpAddressName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIpAllocationMethod": "Static",
+        "publicIPAddressVersion": "IPv4",
+        "dnsSettings": {
+          "domainNameLabel": "[concat(variables('publicIpAddressDNSName'))]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('vmName')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName'))]"
+      ],
+      "properties": {
+        "osProfile": {
+          "computerName": "[variables('vmName')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "windowsConfiguration": {
+            "provisionVmAgent": "true"
+          }
+        },
+        "hardwareProfile": {
+          "vmSize": "[variables('virtualMachineSize')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "MicrosoftWindowsServer",
+            "offer": "WindowsServer",
+            "sku": "2022-datacenter-azure-edition",
+            "version": "latest"
+          },
+          "osDisk": {
+            "createOption": "fromImage",
+            "name": "[concat(variables('vmName'), '-osdisk')]",
+            "managedDisk": {
+              "storageAccountType": "StandardSSD_LRS"
+            }
+          },
+          "dataDisks": []
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('networkSecurityGroupName')]",
+      "location": "[variables('location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "default-allow-rdp",
+            "properties": {
+              "priority": 110,
+              "protocol": "TCP",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "3389"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('networkInterfaceName')]",
+      "location": "[variables('location')]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/virtualNetworks/', variables('virtualNetworkName'))]",
+        "[concat('Microsoft.Network/publicIpAddresses/', variables('publicIpAddressName'))]",
+        "[concat('Microsoft.Network/networkSecurityGroups/', variables('networkSecurityGroupName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              },
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIpAddress": {
+                "id": "[resourceId(resourceGroup().name,'Microsoft.Network/publicIpAddresses', variables('publicIpAddressName'))]"
+              }
+            }
+          }
+        ],
+        "networkSecurityGroup": {
+          "id": "[resourceId(resourceGroup().name, 'Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "Deployment ID": {
+      "type": "string",
+      "value": "[parameters('DeploymentID')]"
+    },
+    "LABVM Admin Username": {
+      "type": "string",
+      "value": "[parameters('adminUsername')]"
+    },
+    "LABVM Admin Password": {
+      "type": "string",
+      "value": "[parameters('adminPassword')]"
+    },
+    "LABVM DNS Name": {
+      "type": "string",
+      "value": "[concat(variables('publicIpAddressDNSName'), '.', resourceGroup().location, '.cloudapp.azure.com')]"
+    },
+    "LabVM Public IP": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIpAddresses', variables('publicIpAddressName')), '2023-09-01').ipAddress]"
+    },
+    "Region": {
+      "type": "string",
+      "value": "[variables('location')]"
+    },
+    "trainerUserName": {
+      "type": "string",
+      "value": "[parameters('trainerUserName')]"
+    },
+    "trainerUserPassword": {
+      "type": "string",
+      "value": "[parameters('trainerUserPassword')]"
+    },
+    "Foundry Resource Name": {
+      "type": "string",
+      "value": "[variables('openAiAccountName')]"
+    },
+    "Foundry Project Name": {
+      "type": "string",
+      "value": "[variables('foundryProjectName')]"
+    },
+    "Azure OpenAI Endpoint": {
+      "type": "string",
+      "value": "[variables('openAiEndpoint')]"
+    },
+    "Azure OpenAI Key": {
+      "type": "string",
+      "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', variables('openAiAccountName')), '2025-04-01-preview').key1]"
+    },
+    "HorizonDB Cluster Name": {
+      "type": "string",
+      "value": "[variables('horizonClusterName')]"
+    },
+    "HorizonDB Username": {
+      "type": "string",
+      "value": "[variables('pgAdminUsername')]"
+    },
+    "HorizonDB Password": {
+      "type": "string",
+      "value": "[variables('pgAdminPassword')]"
+    }
+  }
+}

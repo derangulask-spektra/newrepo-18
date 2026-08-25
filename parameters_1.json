@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "adminUsername": {
+      "value": "demouser"
+    },
+    "adminPassword": {
+      "value": "GEN-PASSWORD"
+    },
+    "AzureUserName": {
+      "value": "GET-AZUSER-UPN"
+    },
+    "AzurePassword": {
+      "value": "GET-AZUSER-PASSWORD"
+    },
+    "ODLID": {
+      "value": "GET-ODL-ID"
+    },
+    "DeploymentID": {
+      "value": "GET-DEPLOYMENT-ID"
+    },
+    "trainerUserName": {
+      "value": "trainer"
+    },
+    "trainerUserPassword": {
+      "value": "GEN-PASSWORD"
+    },
+    "aiLocation": {
+      "value": "westus2"
+    },
+    "horizonDbLocation": {
+      "value": "westus2"
+    },
+    "gptCapacity": {
+      "value": 30
+    },
+    "embeddingCapacity": {
+      "value": 120
+    },
+    "postgresVersion": {
+      "value": "17"
+    },
+    "vCores": {
+      "value": 2
+    },
+    "replicaCount": {
+      "value": 2
+    }
+  }
+}
