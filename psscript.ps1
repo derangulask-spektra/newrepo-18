@@ -75,6 +75,12 @@ Start-Transcript -Path C:\WindowsAzure\Logs\CloudLabsCustomScriptExtension.txt -
 [Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls
 [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
 
+# C:\Logs is used throughout this script (pip-freeze.txt below, plus warning
+# messages that point support staff there) and is also created independently
+# by configure-horizondb.ps1 later in this run. Create it here, up front, so
+# nothing that writes to it earlier in the script depends on run order.
+New-Item -ItemType Directory -Path 'C:\Logs' -Force | Out-Null
+
 #Import Common Functions
 $path = pwd
 $path = $path.Path
@@ -196,11 +202,12 @@ $horizonConfigPath = "C:\LabFiles\horizondb-config.json"
 if ($clusterName) {
     $configureScript = Join-Path $path "configure-horizondb.ps1"
     if (-not (Test-Path $configureScript)) {
-        # The CSE unpacks fileUris into the working directory; fall back to a
+        # The CSE unpacks fileUris flat into the working directory for
+        # non-Azure-Storage sources (e.g. GitHub raw URLs); fall back to a
         # direct download if the layout ever changes.
         $configureScript = "C:\LabFiles\configure-horizondb.ps1"
         (New-Object System.Net.WebClient).DownloadFile(
-            "https://experienceazure.blob.core.windows.net/templates/Building-an-Agentic-Legal-Research-Application/scripts/configure-horizondb.ps1",
+            "https://raw.githubusercontent.com/derangulask-spektra/newrepo-18/refs/heads/main/configure-horizondb.ps1",
             $configureScript)
     }
 
@@ -281,7 +288,7 @@ foreach ($required in @('AZURE_OPENAI_ENDPOINT','AZURE_OPENAI_KEY','AZURE_PG_HOS
 
 #Download LogonTask (user-level setup: VS Code extensions, desktop shortcuts)
 $WebClient = New-Object System.Net.WebClient
-$WebClient.DownloadFile("https://experienceazure.blob.core.windows.net/templates/Building-an-Agentic-Legal-Research-Application/scripts/logontask-01.ps1","C:\LabFiles\logontask-01.ps1")
+$WebClient.DownloadFile("https://raw.githubusercontent.com/derangulask-spektra/newrepo-18/refs/heads/main/logontask-01.ps1","C:\LabFiles\logontask-01.ps1")
 
 #Enable Auto-Logon
 $AutoLogonRegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
