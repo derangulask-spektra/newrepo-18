@@ -67,13 +67,13 @@
     "subnetPrefix": "10.0.0.0/24",
     "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets/',variables('virtualNetworkName'), variables('subnetName'))]",
     "virtualNetworkName": "labvNet",
-    "vmName": "[concat('labvm-',parameters('DeploymentID'))]",
+    "vmName": "[concat('labvm-', parameters('DeploymentID'))]",
     "location": "[resourceGroup().location]",
     "virtualMachineSize": "Standard_D2s_v3",
 
     "_regionNote": "aiLocation/horizonDbLocation are fixed VARIABLES, not parameters. CloudLabs' Test harness only recognizes its own token set (adminUsername, AzureUserName, DeploymentID, etc.) for externally-supplied parameter values; a custom parameter like a region string has no field in the platform's authoring UI, so the harness silently falls back to a parameter's defaultValue instead of any value we supply in a hand-written parameters.json. Baking the region in as a variable removes that failure mode entirely: variables are computed purely from the template's own logic and cannot be overridden by an external parameters file, so there is nothing for the platform to drop.",
-    "aiLocation": "westus3",
-    "horizonDbLocation": "westus2",
+    "aiLocation": "[resourceGroup().location]",
+    "horizonDbLocation": "[resourceGroup().location]",
 
     "openAiAccountName": "[concat('openai-lab-', parameters('DeploymentID'))]",
     "foundryProjectName": "[concat('project-', parameters('DeploymentID'))]",
