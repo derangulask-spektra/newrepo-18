@@ -26,12 +26,6 @@
     "trainerUserPassword": {
       "value": "GEN-PASSWORD"
     },
-    "aiLocation": {
-      "value": "westus2"
-    },
-    "horizonDbLocation": {
-      "value": "westus2"
-    },
     "gptCapacity": {
       "value": 30
     },
