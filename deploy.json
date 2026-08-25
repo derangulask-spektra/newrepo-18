@@ -265,8 +265,8 @@
         "settings": {
           "fileUris": [
             "https://experienceazure.blob.core.windows.net/templates/cloudlabs-common/cloudlabs-windows-functions.ps1",
-            "https://experienceazure.blob.core.windows.net/templates/Building-an-Agentic-Legal-Research-Application/scripts/psscript.ps1",
-            "https://experienceazure.blob.core.windows.net/templates/Building-an-Agentic-Legal-Research-Application/scripts/configure-horizondb.ps1"
+            "https://raw.githubusercontent.com/derangulask-spektra/newrepo-18/refs/heads/main/psscript.ps1",
+            "https://raw.githubusercontent.com/derangulask-spektra/newrepo-18/refs/heads/main/configure-horizondb.ps1"
           ]
         },
         "protectedSettings": {
