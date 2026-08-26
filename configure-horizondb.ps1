@@ -6,7 +6,7 @@
  5_set_firewall_rules.ps1 and 5b_set_parameter_group.ps1.
 
  Runs on the lab VM from psscript.ps1 (CustomScriptExtension), AFTER the ARM
- template has already created:
+ template has already been created:
    - Microsoft.HorizonDb/clusters/<clusterName>
    - Microsoft.HorizonDb/parameterGroups/<parameterGroupName>
 
