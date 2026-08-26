@@ -200,18 +200,23 @@ $pgHost = $pgHostFallback
 $horizonConfigPath = "C:\LabFiles\horizondb-config.json"
 
 if ($clusterName) {
-    $configureScript = Join-Path $path "configure-horizondb.ps1"
-    if (-not (Test-Path $configureScript)) {
-        # The CSE unpacks fileUris flat into the working directory for
-        # non-Azure-Storage sources (e.g. GitHub raw URLs); fall back to a
-        # direct download if the layout ever changes.
-        $configureScript = "C:\LabFiles\configure-horizondb.ps1"
-        (New-Object System.Net.WebClient).DownloadFile(
-            "https://raw.githubusercontent.com/derangulask-spektra/newrepo-18/refs/heads/main/configure-horizondb.ps1",
-            $configureScript)
-    }
-
     try {
+        $configureScript = Join-Path $path "configure-horizondb.ps1"
+        if (-not (Test-Path $configureScript)) {
+            # The CSE unpacks fileUris flat into the working directory for
+            # non-Azure-Storage sources (e.g. GitHub raw URLs); fall back to a
+            # direct download if the layout ever changes. This download is
+            # inside the same try/catch as the script execution below — a
+            # failed download here used to throw uncaught and could kill the
+            # rest of this script silently, with no log and no warning.
+            Write-Host "configure-horizondb.ps1 not found at $configureScript — downloading from GitHub..."
+            $configureScript = "C:\LabFiles\configure-horizondb.ps1"
+            (New-Object System.Net.WebClient).DownloadFile(
+                "https://raw.githubusercontent.com/derangulask-spektra/newrepo-18/refs/heads/main/configure-horizondb.ps1",
+                $configureScript)
+            Write-Host "Downloaded configure-horizondb.ps1 to $configureScript"
+        }
+
         & $configureScript `
             -AzureUserName $AzureUserName `
             -AzurePassword $AzurePassword `
@@ -233,6 +238,8 @@ if ($clusterName) {
         Write-Warning "configure-horizondb.ps1 failed: $($_.Exception.Message)"
         Write-Warning "Continuing so the VM still comes up; see C:\Logs for details."
     }
+} else {
+    Write-Warning "clusterName was empty — skipping HorizonDB configuration entirely. Check that deploy.json's labSettings variable is actually reaching this script (e.g. via 'az vm extension show' or the CSE transcript at C:\WindowsAzure\Logs\CloudLabsCustomScriptExtension.txt)."
 }
 
 # =============================================================================
@@ -304,7 +311,7 @@ $Action= New-ScheduledTaskAction -Execute "C:\Windows\System32\WindowsPowerShell
 Register-ScheduledTask -TaskName "Setup" -Trigger $Trigger -User $User -Action $Action -RunLevel Highest -Force
 Set-ExecutionPolicy -ExecutionPolicy bypass -Force
 $Validstatus="Pending"
-$Validmessage="Post Deployment is Pending"
+$Validmessage=" Post Deployment is Pending"
 
 #Set the final deployment status
 CloudlabsManualAgent setStatus
