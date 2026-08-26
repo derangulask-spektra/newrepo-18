@@ -74,35 +74,94 @@ Write-Log "Parameter group: $ParameterGroupName"
 # ================== Acquire an ARM access token ==============================
 # CloudLabs injects an ODL user (no MFA), so ROPC via the Azure CLI is the
 # most reliable auth path on the lab VM. Az PowerShell is used as a fallback.
+function Test-JwtLooksValid {
+    param([string]$Token)
+    # A real JWT is three base64url segments separated by dots. This is a
+    # structural sanity check only — it does not verify the signature — but
+    # it's enough to catch a malformed/empty/garbage token before spending
+    # 30 minutes retrying ARM calls with something that was never going to work.
+    if (-not $Token) { return $false }
+    return ($Token -split '\.').Count -eq 3
+}
+
+function Write-JwtClaims {
+    param([string]$Token, [string]$Label)
+    # Decode (not verify) the middle JWT segment so we can log WHO the token
+    # was actually issued to (upn/appid, tid, aud) without ever logging the
+    # token itself. This is the fastest way to catch "connected as the wrong
+    # identity" or "token for the wrong resource" without another 30-minute
+    # round trip.
+    try {
+        $parts = $Token -split '\.'
+        $payload = $parts[1].Replace('-', '+').Replace('_', '/')
+        switch ($payload.Length % 4) { 2 { $payload += '==' } 3 { $payload += '=' } }
+        $json = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload))
+        $claims = $json | ConvertFrom-Json
+        Write-Log "  [$Label] aud=$($claims.aud) tid=$($claims.tid) upn=$($claims.upn) appid=$($claims.appid) exp=$($claims.exp)"
+    } catch {
+        Write-Log "  [$Label] Could not decode token claims for diagnostics: $($_.Exception.Message)"
+    }
+}
+
 function Get-ArmToken {
     Write-Log "Signing in to Azure as $AzureUserName ..."
 
     $token = $null
     try {
+        # Disable the WAM broker before attempting ROPC sign-in. Under the
+        # SYSTEM context the CustomScriptExtension runs as, there is no
+        # interactive logon session for WAM to attach to, which otherwise
+        # fails with "A specified logon session does not exist."
+        az config set core.enable_broker_on_windows=false --only-show-errors 2>&1 | Out-Null
         az login --username $AzureUserName --password $AzurePassword --tenant $AzureTenantID --only-show-errors 2>&1 |
             Out-Null
         az account set --subscription $AzureSubscriptionID --only-show-errors 2>&1 | Out-Null
         $raw = az account get-access-token --resource "https://management.azure.com" --output json --only-show-errors
         if ($raw) { $token = ($raw | ConvertFrom-Json).accessToken }
+        if ($token) { Write-Log "az CLI sign-in succeeded." }
     } catch {
         Write-Log "az CLI sign-in failed: $($_.Exception.Message)"
     }
 
+    if ($token -and -not (Test-JwtLooksValid $token)) {
+        Write-Log "az CLI returned a token that doesn't look like a valid JWT; discarding it."
+        $token = $null
+    }
+    if ($token) { Write-JwtClaims -Token $token -Label 'az CLI' }
+
     if (-not $token) {
         Write-Log "Falling back to Az PowerShell sign-in..."
+        # Clear any pre-existing Az context in this session first. psscript.ps1
+        # runs earlier setup (CreateCredFile, etc.) in the SAME PowerShell
+        # process before invoking this script via the call operator, so a
+        # stale or different context could otherwise be picked up silently by
+        # Get-AzAccessToken instead of the one we're about to establish.
+        try { Clear-AzContext -Force -ErrorAction SilentlyContinue | Out-Null } catch { }
+
         $secure = ConvertTo-SecureString $AzurePassword -AsPlainText -Force
         $cred = New-Object System.Management.Automation.PSCredential ($AzureUserName, $secure)
-        Connect-AzAccount -Credential $cred -Tenant $AzureTenantID -Subscription $AzureSubscriptionID -ErrorAction Stop | Out-Null
+        Connect-AzAccount -Credential $cred -Tenant $AzureTenantID -Subscription $AzureSubscriptionID -Force -ErrorAction Stop | Out-Null
+
+        $ctx = Get-AzContext
+        Write-Log "  Az context after connect: Account=$($ctx.Account.Id) Tenant=$($ctx.Tenant.Id) Subscription=$($ctx.Subscription.Id)"
+
         $t = Get-AzAccessToken -ResourceUrl "https://management.azure.com"
         if ($t.Token -is [System.Security.SecureString]) {
             $token = [System.Net.NetworkCredential]::new('', $t.Token).Password
         } else {
             $token = $t.Token
         }
+
+        if ($token -and -not (Test-JwtLooksValid $token)) {
+            Write-Log "  Az PowerShell returned a token that doesn't look like a valid JWT."
+            Write-Log "  Raw token type: $($t.Token.GetType().FullName), length: $($token.Length)"
+            $token = $null
+        }
+        if ($token) { Write-JwtClaims -Token $token -Label 'Az PowerShell' }
     }
 
-    if (-not $token) { throw "Could not obtain an ARM access token." }
-    Write-Log "ARM token acquired."
+    if (-not $token) { throw "Could not obtain a valid ARM access token by any method." }
+    Write-Log "ARM token acquired and passed structural validation."
     return $token
 }
 
@@ -110,6 +169,19 @@ $armToken = Get-ArmToken
 $headers = @{
     "Authorization" = "Bearer $armToken"
     "Content-Type"  = "application/json"
+}
+
+# Fail fast rather than retrying a broken token for the full 30-minute
+# timeout: do one cheap authenticated call up front (list resource groups in
+# this subscription) and confirm it's not a 401/403 before entering the long
+# poll loops below.
+try {
+    $probeUri = "https://management.azure.com/subscriptions/$AzureSubscriptionID/resourcegroups?api-version=2021-04-01&`$top=1"
+    Invoke-RestMethod -Uri $probeUri -Headers $headers -Method Get | Out-Null
+    Write-Log "Token probe succeeded — proceeding."
+} catch {
+    Write-ErrorBody $_
+    throw "Token probe failed — the ARM token is being rejected (see response body above). Not retrying for 30 minutes with a token that doesn't work. Check the identity/claims logged above against the expected ODL user and subscription."
 }
 
 $clusterUri = "https://management.azure.com/subscriptions/$AzureSubscriptionID/resourceGroups/$ResourceGroupName/providers/Microsoft.HorizonDb/clusters/$ClusterName`?api-version=$HorizonApiVersion"
@@ -232,7 +304,40 @@ if ($syncStatus -ne 'InSync') {
 Write-Log "Parameter group is InSync."
 
 # ================== Firewall rules ===========================================
-$fwBaseUri = "https://management.azure.com/subscriptions/$AzureSubscriptionID/resourceGroups/$ResourceGroupName/providers/Microsoft.HorizonDb/clusters/$ClusterName/pools/pool1/firewallRules"
+# The firewall rule resource is nested under a compute pool, not the cluster
+# directly: .../clusters/{clusterName}/pools/{poolName}/firewallRules/{name}.
+#
+# Microsoft's own quickstart doc contains a CONFLICTING example: an `az rest`
+# snippet whose URL omits the cluster segment entirely
+# (.../providers/Microsoft.HorizonDB/pools/DefaultPool/firewallRules/{name}).
+# Do not "fix" this script to match that snippet. It is contradicted by:
+#   1. The "Important: not supported via CLI extension" note printed directly
+#      above that exact snippet in the same doc.
+#   2. The doc's OWN `az horizondb firewall-rule create --cluster-name ...`
+#      troubleshooting example, which requires a cluster name for the same
+#      operation.
+#   3. The Go SDK (generated from the real swagger spec, not prose):
+#      FirewallRulesClient.BeginCreateOrUpdate(resourceGroupName, clusterName,
+#      poolName, firewallRuleName, ...) and PoolsClient.Get(resourceGroupName,
+#      clusterName, poolName, ...) — pools are NEVER a top-level resource,
+#      only ever nested under a cluster.
+# Three independent, mutually-corroborating sources vs. one snippet that
+# contradicts its own page. The nested URL below is correct.
+$poolsUri = "https://management.azure.com/subscriptions/$AzureSubscriptionID/resourceGroups/$ResourceGroupName/providers/Microsoft.HorizonDb/clusters/$ClusterName/pools?api-version=$HorizonApiVersion"
+$poolName = 'DefaultPool'
+try {
+    $poolsResp = Invoke-RestMethod -Uri $poolsUri -Headers $headers -Method Get
+    if ($poolsResp.value -and $poolsResp.value.Count -gt 0) {
+        $poolName = $poolsResp.value[0].name
+        Write-Log "Resolved pool name from Pools API: $poolName"
+    } else {
+        Write-Log "Pools list returned no items; using fallback pool name: $poolName"
+    }
+} catch {
+    Write-Log "  GET pools failed; using fallback pool name '$poolName': $($_.Exception.Message)"
+}
+
+$fwBaseUri = "https://management.azure.com/subscriptions/$AzureSubscriptionID/resourceGroups/$ResourceGroupName/providers/Microsoft.HorizonDb/clusters/$ClusterName/pools/$poolName/firewallRules"
 
 function Set-HorizonFirewallRule {
     param([string]$RuleName, [string]$StartIp, [string]$EndIp, [string]$Description)
@@ -302,6 +407,7 @@ if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Forc
 [pscustomobject]@{
     clusterName        = $ClusterName
     pgHost             = $resolvedHost
+    poolName           = $poolName
     parameterGroupName = $ParameterGroupName
     syncStatus         = $syncStatus
     labVmPublicIp      = $labVmIp
