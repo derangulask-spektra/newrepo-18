@@ -143,51 +143,6 @@ else {
     Write-Warning "Lab folder not found: $labRoot"
     $allOk = $false
 }
-
-# =============================================================================
-# Remove VS Code Desktop Shortcuts
-# =============================================================================
-
-$publicDesktop = :GetFolderPath('CommonDesktopDirectory')
-$userDesktop   = :GetFolderPath('Desktop')
-
-foreach ($dir in @($publicDesktop, $userDesktop)) {
-
-    if ($dir -and (Test-Path $dir)) {
-
-        Get-ChildItem `
-            -Path $dir `
-            -Filter 'Visual Studio Code*.lnk' `
-            -ErrorAction SilentlyContinue |
-        Remove-Item -Force -ErrorAction SilentlyContinue
-    }
-}
-
-# =============================================================================
-# Validation Checks
-# =============================================================================
-
-$checks = @(
-    @{ Name = "Lab repo";       Path = "C:\Lab\README.md" },
-    @{ Name = ".env file";      Path = "C:\Lab\.env" },
-    @{ Name = "Notebook 1";     Path = "C:\Lab\Code\1-data-setup.ipynb" },
-    @{ Name = "Notebook 2";     Path = "C:\Lab\Code\2-app-development.ipynb" },
-    @{ Name = "Dataset";        Path = "C:\Lab\Dataset\cases.csv" },
-    @{ Name = "requirements";   Path = "C:\Lab\requirements.txt" },
-    @{ Name = "Python venv";    Path = "C:\Lab\.venv\Scripts\python.exe" }
-)
-
-foreach ($c in $checks) {
-
-    if (Test-Path $c.Path) {
-        Write-Host "[OK] $($c.Name) present."
-    }
-    else {
-        Write-Warning "[MISSING] $($c.Name) not found at $($c.Path)"
-        $allOk = $false
-    }
-}
-
 # =============================================================================
 # Report Deployment Status to CloudLabs Agent
 # =============================================================================
