@@ -25,3 +25,4 @@
     "Microsoft.ContainerRegistry/*"
   ],
   "NotActions": []
+}
