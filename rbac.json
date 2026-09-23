@@ -24,4 +24,4 @@
     "Microsoft.MachineLearningServices/*",
     "Microsoft.ContainerRegistry/*"
   ],
-  "NotActions": [ ]
+  "NotActions": []
