@@ -1,0 +1,20 @@
+{
+  "AutoPasswordGeneration": true,
+  "Users": [
+    {
+      "FirstName": "ODL",
+      "LastName": "Instructor",
+      "UPNPrefix": "ODL_Instructor",
+      "GlobalAdmin": false,
+      "UserLicenses": []
+    },
+    {
+      "FirstName": "ODL",
+      "LastName": "User01",
+      "UPNPrefix": "ODLUser01",
+      "GlobalAdmin": false,
+      "UserLicenses": []
+    }
+  ],
+  "Licenses": []
+}
