@@ -1,0 +1,125 @@
+{
+  "properties": {
+    "displayName": "Allow Approved Azure AI Models with Approved SKU and Capacity",
+    "policyType": "Custom",
+    "mode": "All",
+    "description": "Allows only approved Azure OpenAI and AI model deployments with their approved SKU and capacity of TPM",
+    "metadata": {
+      "category": "Cognitive Services",
+      "version": "1.0.0"
+    },
+    "parameters": {},
+    "policyRule": {
+      "if": {
+        "anyOf": [
+          {
+            "allOf": [
+              {
+                "field": "type",
+                "equals": "Microsoft.CognitiveServices/accounts/deployments"
+              },
+              {
+                "not": {
+                  "field": "Microsoft.CognitiveServices/accounts/deployments/model.name",
+                  "in": [
+                    "gpt-5.4",
+                    "gpt-5.4-pro",
+                    "gpt-5.4-mini"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "field": "type",
+                "equals": "Microsoft.CognitiveServices/accounts/deployments"
+              },
+              {
+                "field": "Microsoft.CognitiveServices/accounts/deployments/model.name",
+                "equals": "gpt-5.4"
+              },
+              {
+                "anyOf": [
+                  {
+                    "not": {
+                      "field": "Microsoft.CognitiveServices/accounts/deployments/sku.name",
+                      "in": [
+                        "GlobalStandard"
+                      ]
+                    }
+                  },
+                  {
+                    "field": "Microsoft.CognitiveServices/accounts/deployments/sku.capacity",
+                    "greater": 50
+                  }
+                ]
+              }
+            ]
+          },
+           {
+            "allOf": [
+              {
+                "field": "type",
+                "equals": "Microsoft.CognitiveServices/accounts/deployments"
+              },
+              {
+                "field": "Microsoft.CognitiveServices/accounts/deployments/model.name",
+                "equals": "gpt-5.4-mini"
+              },
+              {
+                "anyOf": [
+                  {
+                    "not": {
+                      "field": "Microsoft.CognitiveServices/accounts/deployments/sku.name",
+                      "in": [
+                        "GlobalStandard"
+                      ]
+                    }
+                  },
+                  {
+                    "field": "Microsoft.CognitiveServices/accounts/deployments/sku.capacity",
+                    "greater": 10
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "field": "type",
+                "equals": "Microsoft.CognitiveServices/accounts/deployments"
+              },
+              {
+                "field": "Microsoft.CognitiveServices/accounts/deployments/model.name",
+                "equals": "gpt-5.4-pro"
+              },
+              {
+                "anyOf": [
+                  {
+                    "not": {
+                      "field": "Microsoft.CognitiveServices/accounts/deployments/sku.name",
+                      "in": [
+                        "GlobalStandard",
+                        "Standard"
+                      ]
+                    }
+                  },
+                  {
+                    "field": "Microsoft.CognitiveServices/accounts/deployments/sku.capacity",
+                    "greater": 10
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    }
+  }
+}
