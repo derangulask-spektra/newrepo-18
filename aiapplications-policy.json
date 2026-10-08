@@ -1,0 +1,104 @@
+{
+  "if": {
+    "anyOf": [
+      {
+        "not": {
+          "anyOf": [
+            { "field": "type", "like": "Microsoft.CognitiveServices/accounts/*" },
+            { "field": "type", "like": "Microsoft.Compute/disks/*" },
+            { "field": "type", "like": "Microsoft.Compute/virtualMachines/*" },
+            { "field": "type", "like": "Microsoft.KeyVault/vaults/*" },
+            { "field": "type", "like": "Microsoft.MachineLearningServices/*" },
+            { "field": "type", "like": "Microsoft.Network/networkInterfaces/*" },
+            { "field": "type", "like": "Microsoft.Network/networkSecurityGroups/*" },
+            { "field": "type", "like": "Microsoft.Network/publicIPAddresses/*" },
+            { "field": "type", "like": "Microsoft.Network/virtualNetworks/*" },
+            { "field": "type", "like": "Microsoft.Storage/storageAccounts/*" },
+            { "field": "type", "like": "Microsoft.ContainerRegistry/*" },
+            { "field": "type", "like": "Microsoft.Insights/*" },
+            { "field": "type", "like": "Microsoft.OperationalInsights/*" },
+            { "field": "type", "like": "Microsoft.OperationsManagement/*" },
+            { "field": "type", "like": "Microsoft.AlertsManagement/*" },
+            { "field": "type", "like": "Microsoft.Monitor/*" },
+            {
+              "field": "type",
+              "in": [
+                "Microsoft.CognitiveServices/accounts",
+                "Microsoft.Compute/disks",
+                "Microsoft.Compute/virtualMachines",
+                "Microsoft.KeyVault/vaults",
+                "Microsoft.Network/networkInterfaces",
+                "Microsoft.Network/networkSecurityGroups",
+                "Microsoft.Network/publicIPAddresses",
+                "Microsoft.Network/virtualNetworks",
+                "Microsoft.Storage/storageAccounts"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "allOf": [
+          { "field": "type", "equals": "Microsoft.Compute/disks" },
+          {
+            "not": {
+              "field": "Microsoft.Compute/disks/Sku.Tier",
+              "in": ["Standard"]
+            }
+          }
+        ]
+      },
+      {
+        "allOf": [
+          { "field": "type", "equals": "Microsoft.Compute/virtualMachines" },
+          {
+            "not": {
+              "allOf": [
+                {
+                  "field": "Microsoft.Compute/virtualMachines/imageOffer",
+                  "in": ["cloudlabs-windows-jumpvm"]
+                },
+                {
+                  "field": "Microsoft.Compute/virtualMachines/imagePublisher",
+                  "in": ["Spektra"]
+                },
+                {
+                  "field": "Microsoft.Compute/virtualMachines/imageSku",
+                  "in": ["win2019"]
+                },
+                {
+                  "field": "Microsoft.Compute/virtualMachines/sku.name",
+                  "in": ["Standard_D2s_v3"]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "allOf": [
+          { "field": "type", "equals": "Microsoft.KeyVault/vaults" },
+          {
+            "field": "Microsoft.KeyVault/vaults/sku.name",
+            "notIn": ["Standard"]
+          }
+        ]
+      },
+      {
+        "allOf": [
+          { "source": "action", "equals": "Microsoft.Storage/storageAccounts/write" },
+          { "field": "type", "equals": "Microsoft.Storage/storageAccounts" },
+          {
+            "not": {
+              "field": "Microsoft.Storage/storageAccounts/sku.name",
+              "in": ["Standard_LRS"]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "then": {
+    "effect": "deny"
+  }
+}
