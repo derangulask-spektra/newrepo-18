@@ -1,0 +1,27 @@
+{
+  "Name": "Spektra Custom RBAC",
+  "Id": null,
+  "IsCustom": true,
+  "Description": "This is a custom RBAC role",
+  "Actions": [
+    "Microsoft.Resources/deployments/*",
+    "Microsoft.Resources/subscriptions/resourceGroups/read",
+    "Microsoft.CognitiveServices/accounts/*",
+    "Microsoft.Compute/disks/*",
+    "Microsoft.Compute/virtualMachines/*",
+    "Microsoft.KeyVault/vaults/*",
+    "Microsoft.MachineLearningServices/*",
+    "Microsoft.Network/networkInterfaces/*",
+    "Microsoft.Network/networkSecurityGroups/*",
+    "Microsoft.Network/publicIPAddresses/*",
+    "Microsoft.Network/virtualNetworks/*",
+    "Microsoft.Storage/storageAccounts/*",
+    "Microsoft.ContainerRegistry/*",
+    "Microsoft.Insights/*",
+    "Microsoft.OperationalInsights/*",
+    "Microsoft.OperationsManagement/*",
+    "Microsoft.AlertsManagement/*",
+    "Microsoft.Monitor/*"
+  ],
+  "NotActions": []
+}
